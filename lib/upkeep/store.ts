@@ -2,14 +2,17 @@ import { chunkText } from "@/lib/upkeep/chunker";
 import { createSeedSnapshot } from "@/lib/upkeep/seed";
 import type {
   LogCreateInput,
+  LogListOptions,
   Machine,
   MachineInput,
   MachinePatch,
+  MachineListOptions,
   Manual,
   ManualChunk,
   ManualChunkInput,
   ManualCreateInput,
   MaintenanceLog,
+  ManualListOptions,
   RankedChunk,
   StoreSnapshot
 } from "@/lib/upkeep/types";
@@ -59,6 +62,19 @@ function createId(prefix: string, nextValue: number) {
   return `${prefix}_${nextValue}`;
 }
 
+function cleanString(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function requireMachine(state: StoreState, machineId: string) {
+  return state.machines.find((entry) => entry.id === machineId) ?? null;
+}
+
+function normalizeChunkPartNumbers(partNumbers?: string[]) {
+  return uniquePartLabels(partNumbers ?? []);
+}
+
 function getState(): StoreState {
   if (!globalThis.__upkeepStore) {
     globalThis.__upkeepStore = createSeedSnapshot();
@@ -78,24 +94,48 @@ function nextCounterKey(kind: keyof StoreState["counters"]) {
   return state.counters[kind];
 }
 
-function normalizeInputChunks(manualId: string, chunks: ManualChunkInput[]) {
-  return chunks.map((chunk, index) => ({
+type ManualChunkDraft = {
+  manualId: string;
+  chunkIndex: number;
+  pageNumber: number | undefined;
+  content: string;
+  partNumbers: string[];
+  createdAt: string;
+};
+
+function normalizeInputChunks(manualId: string, chunks: ManualChunkInput[]): ManualChunk[] {
+  const normalized: ManualChunkDraft[] = chunks.flatMap((chunk, index) => {
+    const content = cleanString(chunk.content);
+    if (!content) {
+      return [];
+    }
+
+    return [
+      {
+        manualId,
+        chunkIndex: index,
+        pageNumber: chunk.pageNumber,
+        content,
+        partNumbers: normalizeChunkPartNumbers(chunk.partNumbers),
+        createdAt: nowIso()
+      }
+    ];
+  });
+
+  return normalized.map((chunk, index) => ({
+    ...chunk,
     id: createId("chunk", nextCounterKey("chunk")),
-    manualId,
-    chunkIndex: index,
-    pageNumber: chunk.pageNumber,
-    content: chunk.content.trim(),
-    partNumbers: uniquePartLabels(chunk.partNumbers ?? []),
-    createdAt: nowIso()
+    chunkIndex: index
   }));
 }
 
-function createChunksFromText(manualId: string, text?: string) {
-  if (!text?.trim()) {
+function createChunksFromText(manualId: string, text?: string): ManualChunk[] {
+  const cleanedText = cleanString(text);
+  if (!cleanedText) {
     return [];
   }
 
-  return chunkText(text).map((content, index) => ({
+  return chunkText(cleanedText).map((content, index): ManualChunk => ({
     id: createId("chunk", nextCounterKey("chunk")),
     manualId,
     chunkIndex: index,
@@ -105,9 +145,28 @@ function createChunksFromText(manualId: string, text?: string) {
   }));
 }
 
-export function listMachines(options?: { query?: string }) {
+export function listMachines(options?: MachineListOptions) {
   const state = getState();
-  const machines = options?.query ? rankMachines(state.machines, options.query, state.machines.length) : [...state.machines];
+  const filtered = state.machines.filter((machine) => {
+    if (options?.shopId && machine.shopId !== options.shopId) {
+      return false;
+    }
+    if (options?.status && machine.status !== options.status) {
+      return false;
+    }
+    if (options?.manualId && !machine.manualIds.includes(options.manualId)) {
+      return false;
+    }
+    if (options?.tags?.length && !options.tags.every((tag) => machine.tags.some((machineTag) => machineTag.toLowerCase() === tag.toLowerCase()))) {
+      return false;
+    }
+    return true;
+  });
+
+  const machines = options?.query
+    ? rankMachines(filtered, options.query, options.limit ?? filtered.length)
+    : filtered.slice(0, options?.limit ?? filtered.length);
+
   return machines.map(cloneMachine);
 }
 
@@ -125,14 +184,14 @@ export function createMachine(input: MachineInput) {
   const state = getState();
   const machine: Machine = {
     id: createId("machine", nextCounterKey("machine")),
-    shopId: input.shopId,
-    manufacturer: input.manufacturer,
-    model: input.model,
-    nickname: input.nickname,
-    serialNumber: input.serialNumber,
+    shopId: input.shopId.trim(),
+    manufacturer: input.manufacturer.trim(),
+    model: input.model.trim(),
+    nickname: cleanString(input.nickname),
+    serialNumber: cleanString(input.serialNumber),
     status: input.status ?? "active",
     tags: uniquePartLabels(input.tags ?? []),
-    notes: input.notes,
+    notes: cleanString(input.notes),
     manualIds: [],
     createdAt: nowIso(),
     updatedAt: nowIso()
@@ -150,34 +209,44 @@ export function updateMachine(machineId: string, patch: MachinePatch) {
     return null;
   }
 
-  if (patch.shopId !== undefined) machine.shopId = patch.shopId;
-  if (patch.manufacturer !== undefined) machine.manufacturer = patch.manufacturer;
-  if (patch.model !== undefined) machine.model = patch.model;
-  if (patch.nickname !== undefined) machine.nickname = patch.nickname;
-  if (patch.serialNumber !== undefined) machine.serialNumber = patch.serialNumber;
+  if (patch.shopId !== undefined) machine.shopId = patch.shopId.trim();
+  if (patch.manufacturer !== undefined) machine.manufacturer = patch.manufacturer.trim();
+  if (patch.model !== undefined) machine.model = patch.model.trim();
+  if (patch.nickname !== undefined) machine.nickname = cleanString(patch.nickname);
+  if (patch.serialNumber !== undefined) machine.serialNumber = cleanString(patch.serialNumber);
   if (patch.status !== undefined) machine.status = patch.status;
   if (patch.tags !== undefined) machine.tags = uniquePartLabels(patch.tags);
-  if (patch.notes !== undefined) machine.notes = patch.notes;
+  if (patch.notes !== undefined) machine.notes = cleanString(patch.notes);
   machine.updatedAt = nowIso();
 
   persistState(state);
   return cloneMachine(machine);
 }
 
-export function listManuals(options?: { machineId?: string; manualIds?: string[] }) {
+export function listManuals(options?: ManualListOptions) {
   const state = getState();
   const manualIds = options?.manualIds?.length ? new Set(options.manualIds) : null;
   const manuals = state.manuals.filter((manual) => {
     if (options?.machineId && manual.machineId !== options.machineId) {
       return false;
     }
+    if (options?.status && manual.status !== options.status) {
+      return false;
+    }
     if (manualIds && !manualIds.has(manual.id)) {
       return false;
+    }
+    if (options?.query) {
+      const haystack = [manual.title, manual.filename, manual.notes ?? ""].join(" ").toLowerCase();
+      const tokens = options.query.toLowerCase().split(/\s+/).filter(Boolean);
+      if (!tokens.every((token) => haystack.includes(token))) {
+        return false;
+      }
     }
     return true;
   });
 
-  return manuals.map(cloneManual);
+  return manuals.slice(0, options?.limit ?? manuals.length).map(cloneManual);
 }
 
 export function findManualById(manualId: string) {
@@ -210,6 +279,11 @@ export function listManualChunks(options?: { machineId?: string; manualIds?: str
 
 export function createManual(input: ManualCreateInput) {
   const state = getState();
+  const machine = requireMachine(state, input.machineId);
+  if (!machine) {
+    throw new Error("Machine not found");
+  }
+
   const manualId = createId("manual", nextCounterKey("manual"));
   const manualChunks = input.chunks?.length
     ? normalizeInputChunks(manualId, input.chunks)
@@ -217,22 +291,21 @@ export function createManual(input: ManualCreateInput) {
   const manual: Manual = {
     id: manualId,
     machineId: input.machineId,
-    title: input.title,
-    filename: input.filename,
-    sourceUrl: input.sourceUrl,
+    title: input.title.trim(),
+    filename: input.filename.trim(),
+    sourceUrl: cleanString(input.sourceUrl),
     pages: input.pages,
     status: manualChunks.length > 0 ? "indexed" : "pending",
     chunkCount: manualChunks.length,
     createdAt: nowIso(),
     indexedAt: manualChunks.length > 0 ? nowIso() : undefined,
-    notes: input.notes
+    notes: cleanString(input.notes)
   };
 
   state.manuals.unshift(manual);
   state.chunks.unshift(...manualChunks);
 
-  const machine = state.machines.find((entry) => entry.id === input.machineId);
-  if (machine && !machine.manualIds.includes(manual.id)) {
+  if (!machine.manualIds.includes(manual.id)) {
     machine.manualIds.unshift(manual.id);
     machine.updatedAt = nowIso();
   }
@@ -251,14 +324,28 @@ export function createManual(input: ManualCreateInput) {
 
 export function createLog(input: LogCreateInput) {
   const state = getState();
+  const machine = requireMachine(state, input.machineId);
+  if (!machine) {
+    throw new Error("Machine not found");
+  }
+
+  const sourceManualIds = uniquePartLabels(input.sourceManualIds ?? []);
+  if (sourceManualIds.length > 0) {
+    const allowedManualIds = new Set(machine.manualIds);
+    const invalidManualIds = sourceManualIds.filter((manualId) => !allowedManualIds.has(manualId));
+    if (invalidManualIds.length > 0) {
+      throw new Error("sourceManualIds must belong to the selected machine");
+    }
+  }
+
   const log: MaintenanceLog = {
     id: createId("log", nextCounterKey("log")),
     machineId: input.machineId,
-    issue: input.issue,
-    resolution: input.resolution,
+    issue: input.issue.trim(),
+    resolution: input.resolution.trim(),
     partNumbers: uniquePartLabels(input.partNumbers ?? []),
-    sourceManualIds: uniquePartLabels(input.sourceManualIds ?? []),
-    createdBy: input.createdBy,
+    sourceManualIds,
+    createdBy: cleanString(input.createdBy),
     createdAt: nowIso()
   };
 
@@ -272,11 +359,23 @@ export function createLog(input: LogCreateInput) {
   return cloneLog(log);
 }
 
-export function listLogs(options?: { machineId?: string; query?: string }) {
+export function listLogs(options?: LogListOptions) {
   const state = getState();
-  const logs = options?.query
-    ? rankLogs(options.query, state.logs, state.logs.length)
-    : state.logs.filter((log) => !options?.machineId || log.machineId === options.machineId);
+  const filtered = state.logs.filter((log) => {
+    if (options?.machineId && log.machineId !== options.machineId) {
+      return false;
+    }
+    if (options?.sourceManualId && !log.sourceManualIds.includes(options.sourceManualId)) {
+      return false;
+    }
+    if (options?.query) {
+      const score = rankLogs(options.query, [log], 1);
+      return score.length > 0;
+    }
+    return true;
+  });
+
+  const logs = options?.query ? rankLogs(options.query, filtered, options.limit ?? filtered.length) : filtered.slice(0, options?.limit ?? filtered.length);
 
   return logs.map(cloneLog);
 }

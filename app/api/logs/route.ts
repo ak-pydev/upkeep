@@ -1,41 +1,52 @@
-import { created, badRequest, ok, methodNotAllowed } from "@/lib/upkeep/http";
+import { created, badRequest, ok, methodNotAllowed, notFound, readJson } from "@/lib/upkeep/http";
 import { createLog, listLogs } from "@/lib/upkeep/store";
-import type { LogCreateInput } from "@/lib/upkeep/types";
+import { normalizeLogCreateInput, parseLimit } from "@/lib/upkeep/validation";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const machineId = url.searchParams.get("machineId") ?? undefined;
-  const query = url.searchParams.get("query") ?? undefined;
+  const machineId = url.searchParams.get("machineId")?.trim() || undefined;
+  const query = url.searchParams.get("query")?.trim() || undefined;
+  const sourceManualId = url.searchParams.get("sourceManualId")?.trim() || undefined;
+  const limit = parseLimit(url.searchParams.get("limit"), 25, 100);
 
-  const logs = query ? listLogs({ query }).filter((log) => !machineId || log.machineId === machineId) : listLogs({ machineId });
+  const logs = listLogs({
+    query,
+    machineId,
+    sourceManualId,
+    limit
+  });
 
   return ok({
     logs,
-    count: logs.length
+    count: logs.length,
+    filters: {
+      machineId,
+      query,
+      sourceManualId,
+      limit
+    }
   });
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json().catch(() => null)) as LogCreateInput | null;
-  if (!body?.machineId || !body?.issue || !body?.resolution) {
-    return badRequest("machineId, issue, and resolution are required.");
+  const body = await readJson<unknown>(request);
+  const parsed = normalizeLogCreateInput(body);
+  if (!parsed.ok) {
+    return badRequest(parsed.message);
   }
 
-  const log = createLog({
-    machineId: body.machineId,
-    issue: body.issue,
-    resolution: body.resolution,
-    partNumbers: body.partNumbers,
-    sourceManualIds: body.sourceManualIds,
-    createdBy: body.createdBy
-  });
+  try {
+    const log = createLog(parsed.value);
 
-  return created({ log });
+    return created({ log });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to save log.";
+    return message === "Machine not found" ? notFound(message) : badRequest(message);
+  }
 }
 
 export async function PATCH() {
   return methodNotAllowed("PATCH", ["GET", "POST"]);
 }
-

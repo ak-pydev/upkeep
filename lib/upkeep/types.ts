@@ -104,6 +104,30 @@ export interface ChatRequestBody {
   limit?: number;
 }
 
+export interface MachineListOptions {
+  query?: string;
+  shopId?: string;
+  status?: MachineStatus;
+  manualId?: string;
+  tags?: string[];
+  limit?: number;
+}
+
+export interface ManualListOptions {
+  query?: string;
+  machineId?: string;
+  manualIds?: string[];
+  status?: ManualStatus;
+  limit?: number;
+}
+
+export interface LogListOptions {
+  query?: string;
+  machineId?: string;
+  sourceManualId?: string;
+  limit?: number;
+}
+
 export interface MachineInput {
   shopId: string;
   manufacturer: string;
@@ -164,4 +188,3 @@ export interface RankedChunk {
   manual: Manual;
   score: number;
 }
-

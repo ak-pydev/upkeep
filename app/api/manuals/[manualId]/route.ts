@@ -1,13 +1,13 @@
 import { methodNotAllowed, notFound, ok } from "@/lib/upkeep/http";
-import { findManualById, listManualChunks } from "@/lib/upkeep/store";
+import { findMachineById, findManualById, listManualChunks } from "@/lib/upkeep/store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: Request,
-  context: { params: { manualId: string } }
+  context: { params: Promise<{ manualId: string }> }
 ) {
-  const { manualId } = context.params;
+  const { manualId } = await context.params;
   const manual = findManualById(manualId);
 
   if (!manual) {
@@ -15,9 +15,11 @@ export async function GET(
   }
 
   const chunks = listManualChunks({ manualIds: [manualId] });
+  const machine = findMachineById(manual.machineId);
 
   return ok({
     manual,
+    machine,
     chunks,
     chunkCount: chunks.length
   });
