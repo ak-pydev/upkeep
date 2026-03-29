@@ -187,6 +187,33 @@ select {
   flex-wrap: wrap;
 }
 
+.trust-strip,
+.trust-list,
+.callout-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.trust-strip {
+  margin-top: 24px;
+}
+
+.trust-strip span {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 252, 245, 0.76);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
 .button,
 .quick-chip,
 .vendor-link {
@@ -199,6 +226,16 @@ select {
   font-weight: 600;
   cursor: pointer;
   transition: 160ms ease;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.dismiss-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
   font-family:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -244,6 +281,24 @@ select {
   display: grid;
   gap: 22px;
   padding-top: 28px;
+}
+
+.svg-hero-frame,
+.app-graphic {
+  position: relative;
+  overflow: hidden;
+}
+
+.svg-hero-frame {
+  min-height: 280px;
+  padding: 10px 0 18px;
+}
+
+.svg-hero,
+.svg-flow {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .stat-strip {
@@ -356,6 +411,48 @@ select {
   gap: 28px;
 }
 
+.onboarding-panel {
+  gap: 18px;
+}
+
+.onboarding-list {
+  display: grid;
+  gap: 16px;
+}
+
+.onboarding-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.onboarding-item p {
+  margin: 4px 0 0;
+}
+
+.onboarding-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.onboarding-dot.is-done {
+  border-color: rgba(31, 143, 95, 0.22);
+  background: rgba(31, 143, 95, 0.12);
+  color: var(--good);
+}
+
 .panel {
   padding-top: 18px;
   border-top: 1px solid var(--line);
@@ -363,6 +460,36 @@ select {
 
 .dashboard-main > .panel:first-child {
   padding-top: 0;
+}
+
+.callout-row {
+  margin: 6px 0 2px;
+}
+
+.app-graphic {
+  padding: 12px 0 6px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.callout-card {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.callout-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.callout-card p {
+  margin: 0;
 }
 
 .panel h2 {
@@ -398,6 +525,10 @@ select {
   margin: 10px 0 6px;
 }
 
+.trust-list {
+  margin: 2px 0 6px;
+}
+
 .field-label {
   display: inline-flex;
   margin-bottom: 8px;
@@ -419,6 +550,47 @@ select {
   background: transparent;
   color: var(--text);
   padding: 14px 0;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.upload-dropzone {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 18px 0;
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+  border-bottom: 1px dashed var(--line-strong);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.upload-kicker {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.upload-dropzone strong {
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.upload-dropzone span:last-child {
+  color: var(--muted);
   font-family:
     ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;

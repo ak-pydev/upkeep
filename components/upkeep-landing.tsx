@@ -1,24 +1,25 @@
 import Link from "next/link";
+import { LandingHeroIllustration } from "./product-illustrations";
 import { SiteNav } from "./site-nav";
 
 const features = [
   {
-    title: "Ask in plain language",
-    text: "Type the problem the way a real person would ask it and get a clear answer with the exact source that supports it."
+    title: "Ask like a real person",
+    text: "Describe the issue in normal language and get a clear answer with the exact source that supports it."
   },
   {
-    title: "See what to check next",
-    text: "Upkeep turns dense manuals into a short set of next steps, likely causes, and parts worth checking first."
+    title: "Know what to check next",
+    text: "Upkeep turns a dense machine PDF into a short set of next steps, likely causes, and parts worth checking first."
   },
   {
-    title: "Keep the fix for next time",
+    title: "Save what worked",
     text: "Save what worked so the next person can solve the same issue faster without starting from zero."
   }
 ];
 
 const workflow = [
-  "Choose the machine or product you need help with.",
-  "Add the manual or support text once so Upkeep can search it.",
+  "Choose the machine you want help with.",
+  "Upload the machine PDF once so Upkeep can search it.",
   "Ask your question in everyday language and get a focused answer.",
   "Review the source, open part links, and save the fix."
 ];
@@ -31,25 +32,31 @@ export function UpkeepLanding() {
         <div className="hero-grid">
           <div className="hero-copy">
             <span className="eyebrow">Phase 0 MVP</span>
-            <h1>Get clear answers from confusing manuals in seconds.</h1>
+            <h1>Upload a machine PDF and get clear answers in seconds.</h1>
             <p className="hero-lead">
-              Upkeep turns equipment manuals into a simple help experience:
+              Upkeep turns equipment PDFs into a simple help experience:
               ask a question, see the source, find the likely part, and save the
               answer for next time.
             </p>
+            <div className="trust-strip">
+              <span>No prompt engineering</span>
+              <span>Source-backed answers</span>
+              <span>Shared repair history</span>
+            </div>
             <div className="hero-actions">
               <Link href="/dashboard" className="button button-primary">
-                Try the product
+                Open the app
               </Link>
               <Link href="/dashboard#demo-flow" className="button button-secondary">
-                See how it works
+                See the workflow
               </Link>
             </div>
             <div className="hero-note">
-              Demo example: Haas VF-2, alarm E32, spindle encoder cable.
+              Works best when you start with the actual machine PDF your team already uses.
             </div>
           </div>
           <div className="hero-aside">
+            <LandingHeroIllustration />
             <div className="stat-strip">
               <div>
                 <span className="stat-value">8s</span>
@@ -77,8 +84,8 @@ export function UpkeepLanding() {
 
       <section className="landing-section" id="demo-flow">
         <div className="section-intro">
-          <span className="eyebrow">Demo Flow</span>
-          <h2>One simple flow from question to answer to saved fix.</h2>
+          <span className="eyebrow">How It Works</span>
+          <h2>One clean flow from uploaded PDF to saved fix.</h2>
         </div>
         <ol className="workflow-list">
           {workflow.map((step, index) => (
@@ -93,11 +100,11 @@ export function UpkeepLanding() {
       <section className="landing-section capability-section">
         <div className="section-intro">
           <span className="eyebrow">Capabilities</span>
-          <h2>Built to feel easy to trust on the first try.</h2>
+          <h2>Built to feel simple on the first try.</h2>
         </div>
         {features.map((feature) => (
           <article key={feature.title} className="feature-row">
-            <span className="feature-kicker">Workflow</span>
+            <span className="feature-kicker">Product</span>
             <h2>{feature.title}</h2>
             <p>{feature.text}</p>
           </article>

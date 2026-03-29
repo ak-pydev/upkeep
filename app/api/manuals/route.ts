@@ -1,4 +1,5 @@
 import { created, badRequest, ok, methodNotAllowed, notFound, readJson } from "@/lib/upkeep/http";
+import { extractManualUpload } from "@/lib/upkeep/manual-upload";
 import { createManual, findMachineById, listManuals } from "@/lib/upkeep/store";
 import { normalizeManualCreateInput, parseLimit, parseManualStatus } from "@/lib/upkeep/validation";
 
@@ -28,18 +29,51 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await readJson<unknown>(request);
-  const parsed = normalizeManualCreateInput(body);
-  if (!parsed.ok) {
-    return badRequest(parsed.message);
-  }
-
-  const machine = await findMachineById(parsed.value.machineId);
-  if (!machine) {
-    return notFound("Machine not found");
-  }
-
+  const contentType = request.headers.get("content-type") ?? "";
   try {
+    let inputBody: Record<string, unknown> | unknown;
+
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const fileValue = formData.get("file");
+      const file = fileValue instanceof File && fileValue.size > 0 ? fileValue : null;
+      let extractedSourceText: string | undefined;
+      let extractedPages: number | undefined;
+
+      if (file) {
+        try {
+          const extracted = await extractManualUpload(file);
+          extractedSourceText = extracted.sourceText || undefined;
+          extractedPages = extracted.pages;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to read the uploaded file.";
+          return badRequest(message);
+        }
+      }
+
+      inputBody = {
+        machineId: formData.get("machineId"),
+        title: formData.get("title"),
+        filename: formData.get("filename") || file?.name,
+        sourceUrl: formData.get("sourceUrl"),
+        pages: formData.get("pages") || extractedPages,
+        notes: formData.get("notes"),
+        sourceText: extractedSourceText || formData.get("sourceText")
+      };
+    } else {
+      inputBody = await readJson<unknown>(request);
+    }
+
+    const parsed = normalizeManualCreateInput(inputBody);
+    if (!parsed.ok) {
+      return badRequest(parsed.message);
+    }
+
+    const machine = await findMachineById(parsed.value.machineId);
+    if (!machine) {
+      return notFound("Machine not found");
+    }
+
     const result = await createManual(parsed.value);
 
     return created({

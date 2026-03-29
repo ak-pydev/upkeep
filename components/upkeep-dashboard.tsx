@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import type { ChatResult, MaintenanceLog, Manual, Machine } from "@/lib/upkeep/types";
+import { DashboardFlowIllustration } from "./product-illustrations";
 import { SiteNav } from "./site-nav";
 
 type ApiListResponse<T> = {
@@ -47,6 +48,7 @@ function statusTone(status: Machine["status"]) {
 }
 
 export function UpkeepDashboard() {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [selectedMachineId, setSelectedMachineId] = useState("");
   const [manuals, setManuals] = useState<Manual[]>([]);
@@ -66,25 +68,83 @@ export function UpkeepDashboard() {
     "Alarm E32 indicates spindle encoder feedback mismatch. Inspect the spindle encoder cable, reseat the connectors, clear the alarm, and test at low spindle speed."
   );
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const [selectedFileLabel, setSelectedFileLabel] = useState<string | null>(null);
+  const [selectedFileType, setSelectedFileType] = useState<string | null>(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   const [logIssue, setLogIssue] = useState("");
   const [logResolution, setLogResolution] = useState("");
   const [logPartNumbers, setLogPartNumbers] = useState("");
   const [logStatus, setLogStatus] = useState<string | null>(null);
 
+  const selectedManuals = manuals.filter((manual) => selectedManualIds.includes(manual.id));
   const activeMachine = machines.find((machine) => machine.id === selectedMachineId) ?? null;
   const hasSetup = Boolean(activeMachine);
   const hasManualContext = manuals.length > 0;
   const hasAnswer = Boolean(answer);
+  const hasSavedFix = logs.length > 0 || Boolean(logStatus);
   const flowStep = !hasSetup ? 1 : !hasManualContext ? 2 : !hasAnswer ? 3 : 4;
+  const primaryDocumentName = selectedFileLabel ?? selectedManuals[0]?.title ?? "No PDF uploaded yet";
   const helperCopy =
     flowStep === 1
       ? "Start by choosing the machine you want help with."
       : flowStep === 2
-        ? "Add manual text so Upkeep has something to search."
+        ? "Upload the machine PDF so Upkeep has something to search."
         : flowStep === 3
           ? "Ask your question in plain language."
           : "Review the answer, open any part links, and save the fix.";
+  const onboardingSteps = [
+    {
+      label: "Choose a machine",
+      detail: "Pick the machine or asset you want help with.",
+      done: hasSetup
+    },
+    {
+      label: "Upload a PDF",
+      detail: "Add the machine PDF once so Upkeep can search it.",
+      done: hasManualContext
+    },
+    {
+      label: "Ask a question",
+      detail: "Describe the issue the normal way.",
+      done: hasAnswer
+    },
+    {
+      label: "Save the fix",
+      detail: "Keep the answer for the next person.",
+      done: hasSavedFix
+    }
+  ];
+
+  async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    setError(null);
+    setSelectedUploadFile(file);
+    setSelectedFileLabel(file.name);
+    setSelectedFileType(file.type || "unknown");
+    setManualFilename(file.name);
+    setManualTitle(file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "));
+
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      setSelectedUploadFile(null);
+      setSelectedFileLabel(null);
+      setSelectedFileType(null);
+      setError("Upload a PDF file.");
+      return;
+    }
+
+    setManualPages("");
+    setManualNotes("");
+    setManualSourceText("");
+    setUploadStatus("PDF selected. Upkeep will extract and index it on upload.");
+  }
 
   async function fetchMachines() {
     const response = await fetch("/api/machines", { cache: "no-store" });
@@ -203,41 +263,64 @@ export function UpkeepDashboard() {
 
   async function submitManual() {
     if (!selectedMachineId) {
-      setError("Select a machine before uploading a manual.");
+      setError("Select a machine before uploading a PDF.");
+      return;
+    }
+
+    if (!selectedUploadFile) {
+      setError("Choose a PDF before continuing.");
       return;
     }
 
     setUploadStatus(null);
     setError(null);
+    const basePayload = {
+      machineId: selectedMachineId,
+      title: manualTitle.trim(),
+      filename: manualFilename.trim(),
+      pages: manualPages ? Number(manualPages) : undefined,
+      notes: manualNotes.trim() || undefined,
+      sourceText: manualSourceText.trim() || undefined
+    };
+    const formData = new FormData();
+    formData.append("machineId", basePayload.machineId);
+    formData.append("title", basePayload.title);
+    formData.append("filename", basePayload.filename);
+    if (basePayload.pages !== undefined) {
+      formData.append("pages", String(basePayload.pages));
+    }
+    if (basePayload.notes) {
+      formData.append("notes", basePayload.notes);
+    }
+    if (basePayload.sourceText) {
+      formData.append("sourceText", basePayload.sourceText);
+    }
+    formData.append("file", selectedUploadFile);
     const response = await fetch("/api/manuals", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        machineId: selectedMachineId,
-        title: manualTitle.trim(),
-        filename: manualFilename.trim(),
-        pages: manualPages ? Number(manualPages) : undefined,
-        notes: manualNotes.trim() || undefined,
-        sourceText: manualSourceText.trim() || undefined
-      })
+      body: formData
     });
 
     if (!response.ok) {
       const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-      throw new Error(body?.error?.message ?? "Unable to upload manual.");
+      throw new Error(body?.error?.message ?? "Unable to upload PDF.");
     }
 
     const data = (await response.json()) as ManualCreateResponse;
-    setUploadStatus(data.indexStatus === "indexed" ? "Manual indexed and attached to the machine." : "Manual saved. Add text to index it.");
+    setUploadStatus(data.indexStatus === "indexed" ? "PDF indexed and attached to the machine." : "PDF saved.");
     await fetchMachineData(selectedMachineId);
     setSelectedManualIds((current) => Array.from(new Set([...current, data.manual.id])));
+    setSelectedUploadFile(null);
+    setSelectedFileLabel(null);
+    setSelectedFileType(null);
     setManualFilename("new-manual.pdf");
-    setManualTitle("New machine manual");
+    setManualTitle("New machine PDF");
     setManualPages("");
     setManualNotes("");
     setManualSourceText("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   async function saveLog() {
@@ -289,19 +372,48 @@ export function UpkeepDashboard() {
     setUploadStatus(null);
   }
 
-  const selectedManuals = manuals.filter((manual) => selectedManualIds.includes(manual.id));
-
   return (
     <main className="page-shell">
       <SiteNav />
       <section className="dashboard-shell">
         <aside className="dashboard-rail">
+          {!onboardingDismissed ? (
+            <section className="panel onboarding-panel">
+              <div className="panel-topline">
+                <div>
+                  <span className="eyebrow">Getting Started</span>
+                  <h2>Use Upkeep in under a minute.</h2>
+                </div>
+                <button
+                  type="button"
+                  className="dismiss-button"
+                  onClick={() => setOnboardingDismissed(true)}
+                >
+                  Hide
+                </button>
+              </div>
+              <div className="onboarding-list">
+                {onboardingSteps.map((step, index) => (
+                  <div key={step.label} className="onboarding-item">
+                    <span className={`onboarding-dot ${step.done ? "is-done" : ""}`}>
+                      {step.done ? "✓" : index + 1}
+                    </span>
+                    <div>
+                      <strong>{step.label}</strong>
+                      <p>{step.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="panel">
             <span className="eyebrow">Step 1</span>
-            <h1>Choose what you need help with.</h1>
+            <h1>Pick the machine you want help with.</h1>
             <p>
-              Pick a machine, then follow the guided flow below. The demo is
-              preloaded with a Haas VF-2 example so you can try it immediately.
+              Start with the machine, then move through the guided flow below.
+              A sample Haas VF-2 path is already loaded if you want to try the app first.
             </p>
             <p className="section-note consumer-note">Now: {helperCopy}</p>
 
@@ -343,7 +455,7 @@ export function UpkeepDashboard() {
               </div>
               <div>
                 <span className="stat-number">{manuals.length}</span>
-                <span className="stat-caption">manuals</span>
+                <span className="stat-caption">PDFs</span>
               </div>
               <div>
                 <span className="stat-number">{logs.length}</span>
@@ -351,44 +463,52 @@ export function UpkeepDashboard() {
               </div>
             </div>
 
+            <div className="trust-list">
+              <span className="tiny-chip">Source-backed</span>
+              <span className="tiny-chip">Plain-language Q&A</span>
+              <span className="tiny-chip">Saved fixes</span>
+            </div>
+
             <button className="button button-secondary button-block" type="button" onClick={loadDemoPath}>
-              Load sample question
+              Load sample flow
             </button>
           </section>
 
           <section className="panel">
             <span className="eyebrow">Step 2</span>
-            <h2>Add manual text once.</h2>
+            <h2>Upload the PDF your team already uses.</h2>
             <p>
-              Paste extracted manual text so Upkeep can search it. For the demo,
-              the seeded Haas manual is already available.
+              Upkeep extracts the text for you, indexes it, and makes it searchable right away.
             </p>
 
-            <div className="stack">
-              <label className="field-label" htmlFor="manual-title">Manual title</label>
-              <input id="manual-title" className="input" value={manualTitle} onChange={(event) => setManualTitle(event.target.value)} />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden-file-input"
+              onChange={handleFileSelect}
+            />
 
-              <label className="field-label" htmlFor="manual-filename">Filename</label>
-              <input id="manual-filename" className="input" value={manualFilename} onChange={(event) => setManualFilename(event.target.value)} />
+            <button
+              className="upload-dropzone"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <span className="upload-kicker">PDF upload</span>
+              <strong>{selectedFileLabel ?? "Choose a PDF file"}</strong>
+              <span>
+                {selectedFileType
+                  ? `Selected type: ${selectedFileType}`
+                  : "Upload the machine guide, manual, or service PDF"}
+              </span>
+            </button>
 
-              <label className="field-label" htmlFor="manual-pages">Pages</label>
-              <input id="manual-pages" className="input" value={manualPages} onChange={(event) => setManualPages(event.target.value)} inputMode="numeric" />
+            <p className="section-note">
+              Current document: {primaryDocumentName}
+            </p>
 
-              <label className="field-label" htmlFor="manual-notes">Notes</label>
-              <textarea id="manual-notes" className="input textarea" value={manualNotes} onChange={(event) => setManualNotes(event.target.value)} />
-
-              <label className="field-label" htmlFor="manual-source">Extracted text</label>
-              <textarea
-                id="manual-source"
-                className="input textarea textarea-large"
-                value={manualSourceText}
-                onChange={(event) => setManualSourceText(event.target.value)}
-                placeholder="Paste OCR or extracted PDF text here so the manual can be indexed."
-              />
-            </div>
-
-            <button className="button button-primary button-block" type="button" onClick={() => submitManual().catch((manualError) => setError(manualError instanceof Error ? manualError.message : "Unable to upload manual."))}>
-              Add manual
+            <button className="button button-primary button-block" type="button" onClick={() => submitManual().catch((manualError) => setError(manualError instanceof Error ? manualError.message : "Unable to upload PDF."))}>
+              Upload PDF
             </button>
             {uploadStatus ? <p className="feedback success">{uploadStatus}</p> : null}
           </section>
@@ -399,14 +519,31 @@ export function UpkeepDashboard() {
             <div className="panel-topline">
               <div>
                 <span className="eyebrow">Step 3</span>
-                <h1>Ask your question the normal way.</h1>
+                <h1>Ask the question the way you normally would.</h1>
               </div>
               <div className="mode-badge">{loading ? "Finding answer" : "Ready"}</div>
             </div>
             <p className="section-note consumer-note">
-              You do not need the right technical wording. Upkeep will search
-              the manual, pull the best source, and suggest the next step.
+              You do not need the exact technical wording. Upkeep searches the uploaded PDF,
+              pulls the most relevant source, and suggests the next step.
             </p>
+
+            <DashboardFlowIllustration />
+
+            <div className="callout-row">
+              <div className="callout-card">
+                <strong>Fast</strong>
+                <p>Go from PDF to answer without digging through pages.</p>
+              </div>
+              <div className="callout-card">
+                <strong>Grounded</strong>
+                <p>Every answer shows the supporting source passage.</p>
+              </div>
+              <div className="callout-card">
+                <strong>Reusable</strong>
+                <p>Save the fix so the next issue is easier to solve.</p>
+              </div>
+            </div>
 
             <label className="field-label" htmlFor="chat-question">Troubleshooting prompt</label>
             <textarea
@@ -486,7 +623,7 @@ export function UpkeepDashboard() {
 
             <section className="panel">
               <span className="eyebrow">Why this answer</span>
-              <h2>Source text from the manual.</h2>
+              <h2>Source text from your PDF.</h2>
               {answer?.sources.length ? (
                 <div className="stack">
                   {answer.sources.map((source) => (
@@ -500,7 +637,7 @@ export function UpkeepDashboard() {
                   ))}
                 </div>
               ) : (
-                <p className="empty-state">The supporting manual passage will appear here after you ask a question.</p>
+                <p className="empty-state">The supporting source passage will appear here after you ask a question.</p>
               )}
             </section>
           </div>
@@ -555,7 +692,7 @@ export function UpkeepDashboard() {
             <h2>Previous answers and saved fixes.</h2>
             {selectedManuals.length ? (
               <p className="section-note">
-                Manuals currently attached: {selectedManuals.map((manual) => manual.title).join(", ")}
+                PDFs currently attached: {selectedManuals.map((manual) => manual.title).join(", ")}
               </p>
             ) : null}
             <div className="timeline">

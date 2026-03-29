@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Upkeep",
+  title: "Upkeep | Instant answers from machine PDFs",
   description:
-    "AI-powered troubleshooting, parts lookup, and maintenance logging for small manufacturers and machine shops."
+    "Upload a machine PDF, ask a question in plain language, and get a source-backed answer with likely parts and a saved fix."
 };
 
 export default function RootLayout({

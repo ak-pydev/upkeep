@@ -7,15 +7,15 @@ export function SiteNav() {
         <div className="brand-mark" aria-hidden="true" />
         <div>
           <span className="brand-name">Upkeep</span>
-          <span className="brand-tag">Maintenance intelligence for machine shops</span>
+          <span className="brand-tag">Instant answers from machine PDFs</span>
         </div>
       </div>
       <nav className="site-nav-links" aria-label="Primary">
         <Link href="/" className="nav-link">
-          Overview
+          Home
         </Link>
         <Link href="/dashboard" className="nav-link nav-link-accent">
-          Open Dashboard
+          Open App
         </Link>
       </nav>
     </header>
