@@ -1,4 +1,5 @@
 import { generateClaudeAnswer } from "@/lib/integrations/claude";
+import { isSupabaseConfigured, matchManualChunksByEmbedding } from "@/lib/integrations/supabase";
 import { createPartSuggestion, uniquePartLabels } from "@/lib/upkeep/parts";
 import { pickSummarySnippet, rankChunks, rankLogs, rankMachines } from "@/lib/upkeep/search";
 import type {
@@ -16,8 +17,7 @@ import {
   listManuals,
   listLogs,
   findMachineById,
-  findMachinesByQuery,
-  findManualById
+  findMachinesByQuery
 } from "@/lib/upkeep/store";
 
 function buildPartLabels(chunks: RankedChunk[]) {
@@ -115,6 +115,66 @@ function selectPrimaryManual(chunks: RankedChunk[]) {
   return chunks[0]?.manual ?? null;
 }
 
+async function mergeSemanticChunkMatches(
+  question: string,
+  machineId: string | undefined,
+  manualIds: string[] | undefined,
+  manuals: Manual[],
+  rankedChunks: RankedChunk[],
+  limit: number
+) {
+  if (!isSupabaseConfigured()) {
+    return rankedChunks;
+  }
+
+  try {
+    const semanticMatches = await matchManualChunksByEmbedding({
+      query: question,
+      machineId,
+      manualIds,
+      limit
+    });
+
+    const merged = new Map<string, RankedChunk>();
+    for (const entry of rankedChunks) {
+      merged.set(entry.chunk.id, entry);
+    }
+
+    for (const match of semanticMatches) {
+      const manual = manuals.find((entry) => entry.id === match.chunk.manualId);
+      if (!manual) {
+        continue;
+      }
+
+      const semanticScore = Math.max(0, match.similarity) * 12;
+      const existing = merged.get(match.chunk.id);
+      if (existing) {
+        merged.set(match.chunk.id, {
+          ...existing,
+          score: existing.score + semanticScore
+        });
+      } else {
+        merged.set(match.chunk.id, {
+          chunk: match.chunk,
+          manual,
+          score: semanticScore
+        });
+      }
+    }
+
+    return [...merged.values()]
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+        return left.chunk.chunkIndex - right.chunk.chunkIndex;
+      })
+      .slice(0, limit);
+  } catch {
+    return rankedChunks;
+  }
+}
+
 export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult> {
   const question = (body.question ?? "").trim();
   if (!question) {
@@ -150,14 +210,22 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
       .filter((entry): entry is RankedChunk => Boolean(entry.manual)),
     body.limit ?? 5
   );
+  const finalRankedChunks = await mergeSemanticChunkMatches(
+    question,
+    machine?.id,
+    body.manualIds,
+    manuals,
+    rankedChunks,
+    body.limit ?? 5
+  );
 
   const relatedLogs = rankLogs(
     question,
     await listLogs({ machineId: machine?.id }),
     body.limit ?? 5
   );
-  const manual = selectPrimaryManual(rankedChunks) ?? manuals[0] ?? null;
-  const partLabels = buildPartLabels(rankedChunks);
+  const manual = selectPrimaryManual(finalRankedChunks) ?? manuals[0] ?? null;
+  const partLabels = buildPartLabels(finalRankedChunks);
 
   const partSuggestions = uniquePartLabels(partLabels).map((label) =>
     createPartSuggestion(label, "Detected from the matched manual chunk and maintenance context.")
@@ -169,15 +237,15 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
     try {
       maybeClaude = await generateClaudeAnswer({
         system: "Use the supplied context.",
-        user: buildClaudePrompt(question, machine, manual, rankedChunks, relatedLogs)
+        user: buildClaudePrompt(question, machine, manual, finalRankedChunks, relatedLogs)
       });
     } catch {
       maybeClaude = null;
     }
   }
-  const answer = maybeClaude ?? buildDemoAnswer(question, machine, manual, rankedChunks, relatedLogs);
+  const answer = maybeClaude ?? buildDemoAnswer(question, machine, manual, finalRankedChunks, relatedLogs);
 
-  const sources = rankedChunks.map((entry) => ({
+  const sources = finalRankedChunks.map((entry) => ({
     manualId: entry.manual.id,
     manualTitle: entry.manual.title,
     chunkId: entry.chunk.id,
@@ -191,7 +259,7 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
     issue: question,
     resolution: answer,
     partNumbers: partSuggestions.map((part) => part.label),
-    sourceManualIds: rankedChunks.map((entry) => entry.manual.id)
+    sourceManualIds: finalRankedChunks.map((entry) => entry.manual.id)
   };
 
   return {

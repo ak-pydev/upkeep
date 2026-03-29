@@ -34,6 +34,10 @@ body {
     serif;
 }
 
+body > * {
+  width: 100%;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -64,6 +68,63 @@ select {
   margin-bottom: 34px;
   padding: 8px 0 16px;
   border-bottom: 1px solid var(--line);
+}
+
+.site-footer {
+  width: min(1240px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 22px 0 36px;
+  border-top: 1px solid var(--line);
+}
+
+.site-footer-grid,
+.footer-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.site-footer-grid {
+  align-items: flex-start;
+}
+
+.footer-title {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.footer-copy,
+.footer-meta,
+.footer-links {
+  color: var(--muted);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+.footer-copy {
+  max-width: 46ch;
+  margin: 0;
+  line-height: 1.72;
+}
+
+.footer-links {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.footer-meta {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 0.88rem;
 }
 
 .site-brand {
@@ -762,6 +823,10 @@ select {
   .site-nav {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .site-footer {
+    width: min(100% - 24px, 1240px);
   }
 
   .hero h1 {

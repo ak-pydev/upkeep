@@ -44,6 +44,48 @@ create table if not exists manual_chunks (
 
 create index if not exists manual_chunks_manual_id_idx on manual_chunks (manual_id);
 create index if not exists manual_chunks_page_number_idx on manual_chunks (page_number);
+create index if not exists manual_chunks_embedding_idx
+  on manual_chunks using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
+
+create or replace function match_manual_chunks(
+  query_embedding vector(1536),
+  match_count integer default 5,
+  filter_machine_id text default null,
+  filter_manual_ids text[] default null
+)
+returns table (
+  id text,
+  manual_id text,
+  chunk_index integer,
+  page_number integer,
+  content text,
+  part_numbers text[],
+  metadata jsonb,
+  created_at timestamptz,
+  similarity double precision
+)
+language sql
+stable
+as $$
+  select
+    mc.id,
+    mc.manual_id,
+    mc.chunk_index,
+    mc.page_number,
+    mc.content,
+    mc.part_numbers,
+    mc.metadata,
+    mc.created_at,
+    1 - (mc.embedding <=> query_embedding) as similarity
+  from manual_chunks mc
+  join manuals m on m.id = mc.manual_id
+  where mc.embedding is not null
+    and (filter_machine_id is null or m.machine_id = filter_machine_id)
+    and (filter_manual_ids is null or mc.manual_id = any(filter_manual_ids))
+  order by mc.embedding <=> query_embedding
+  limit greatest(match_count, 1);
+$$;
 
 create table if not exists maintenance_logs (
   id text primary key,
@@ -58,4 +100,3 @@ create table if not exists maintenance_logs (
 
 create index if not exists maintenance_logs_machine_id_idx on maintenance_logs (machine_id);
 create index if not exists maintenance_logs_created_at_idx on maintenance_logs (created_at desc);
-

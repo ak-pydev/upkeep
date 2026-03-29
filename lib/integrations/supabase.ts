@@ -1,3 +1,4 @@
+import { embedText, toPgvectorLiteral } from "@/lib/upkeep/embeddings";
 import type { Manual, ManualChunk, MaintenanceLog, Machine } from "@/lib/upkeep/types";
 
 export interface SupabaseConfig {
@@ -98,6 +99,16 @@ async function supabaseRequest<T>(
   return (await response.json()) as T;
 }
 
+async function supabaseRpc<T>(name: string, body: Record<string, unknown>) {
+  return supabaseRequest<T>(`rpc/${name}`, {
+    method: "POST",
+    headers: {
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
 export interface ManualVectorRow {
   manual_id: string;
   machine_id: string;
@@ -155,8 +166,13 @@ export interface ManualChunkRow {
   page_number?: number;
   content: string;
   part_numbers: string[];
+  embedding?: string;
   metadata?: Record<string, unknown>;
   created_at: string;
+}
+
+export interface MatchedManualChunkRow extends ManualChunkRow {
+  similarity: number;
 }
 
 export function toManualVectorRows(
@@ -232,6 +248,7 @@ export function toManualChunkRows(chunks: ManualChunk[]): ManualChunkRow[] {
     page_number: chunk.pageNumber,
     content: chunk.content,
     part_numbers: chunk.partNumbers,
+    embedding: toPgvectorLiteral(embedText(`${chunk.content} ${chunk.partNumbers.join(" ")}`.trim())),
     created_at: chunk.createdAt
   }));
 }
@@ -374,6 +391,25 @@ export async function insertLogInSupabase(log: MaintenanceLog) {
     },
     body: JSON.stringify([toMaintenanceLogRow(log)])
   });
+}
+
+export async function matchManualChunksByEmbedding(options: {
+  query: string;
+  machineId?: string;
+  manualIds?: string[];
+  limit?: number;
+}) {
+  const rows = await supabaseRpc<MatchedManualChunkRow[]>("match_manual_chunks", {
+    query_embedding: toPgvectorLiteral(embedText(options.query)),
+    match_count: options.limit ?? 5,
+    filter_machine_id: options.machineId ?? null,
+    filter_manual_ids: options.manualIds?.length ? options.manualIds : null
+  });
+
+  return rows.map((row) => ({
+    chunk: fromManualChunkRow(row),
+    similarity: row.similarity
+  }));
 }
 
 export interface SupabaseBoundarySummary {

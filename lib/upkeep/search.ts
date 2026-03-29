@@ -1,3 +1,4 @@
+import { cosineSimilarity, embedText } from "./embeddings";
 import type { RankedChunk, MaintenanceLog, Machine } from "./types";
 
 function normalize(text: string) {
@@ -36,6 +37,14 @@ function scoreAgainst(queryTokens: string[], text: string) {
   return score;
 }
 
+function semanticScore(query: string, text: string) {
+  if (!query.trim() || !text.trim()) {
+    return 0;
+  }
+
+  return cosineSimilarity(embedText(query), embedText(text));
+}
+
 export function rankMachines(machines: Machine[], query: string, limit = 5): Machine[] {
   const tokens = tokenize(query);
   return machines
@@ -60,10 +69,16 @@ export function rankChunks(
   const tokens = tokenize(query);
 
   return chunks
-    .map((entry) => ({
-      ...entry,
-      score: scoreAgainst(tokens, `${entry.chunk.content} ${entry.chunk.partNumbers.join(" ")}`)
-    }))
+    .map((entry) => {
+      const text = `${entry.chunk.content} ${entry.chunk.partNumbers.join(" ")}`.trim();
+      const lexical = scoreAgainst(tokens, text);
+      const semantic = semanticScore(query, text);
+
+      return {
+        ...entry,
+        score: lexical + semantic * 8
+      };
+    })
     .sort((a, b) => {
       if (b.score !== a.score) {
         return b.score - a.score;
@@ -93,4 +108,3 @@ export function pickSummarySnippet(text: string, maxLength = 220) {
   }
   return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
-

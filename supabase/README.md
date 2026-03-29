@@ -6,8 +6,9 @@ This repo ships with a demo-first in-memory store and SQL artifacts for the even
 
 - `machines` stores the equipment selector state.
 - `manuals` stores uploaded manuals and their indexing status.
-- `manual_chunks` stores chunked manual text plus optional pgvector embeddings.
+- `manual_chunks` stores chunked manual text plus pgvector embeddings.
 - `maintenance_logs` stores resolved fixes and the parts used.
+- `match_manual_chunks` performs vector similarity retrieval for chat.
 
 ## Swap-in path
 
@@ -15,9 +16,9 @@ This repo ships with a demo-first in-memory store and SQL artifacts for the even
 - Replace the write helpers in `lib/upkeep/store.ts` with Supabase insert/update calls.
 - Use `lib/integrations/supabase.ts` row mappers to shape the payloads.
 - Use `supabase/schema.sql` as the production schema starting point.
+- Run the schema after updates so the vector index and RPC function exist.
 
 ## Demo mode
 
 - The seeded in-memory store powers the local API immediately.
 - Chat uses ranked manual chunks first and only falls back to Claude if `UPKEEP_AI_MODE=claude` and `ANTHROPIC_API_KEY` is set.
-
