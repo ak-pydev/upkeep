@@ -73,6 +73,18 @@ export function UpkeepDashboard() {
   const [logStatus, setLogStatus] = useState<string | null>(null);
 
   const activeMachine = machines.find((machine) => machine.id === selectedMachineId) ?? null;
+  const hasSetup = Boolean(activeMachine);
+  const hasManualContext = manuals.length > 0;
+  const hasAnswer = Boolean(answer);
+  const flowStep = !hasSetup ? 1 : !hasManualContext ? 2 : !hasAnswer ? 3 : 4;
+  const helperCopy =
+    flowStep === 1
+      ? "Start by choosing the machine you want help with."
+      : flowStep === 2
+        ? "Add manual text so Upkeep has something to search."
+        : flowStep === 3
+          ? "Ask your question in plain language."
+          : "Review the answer, open any part links, and save the fix.";
 
   async function fetchMachines() {
     const response = await fetch("/api/machines", { cache: "no-store" });
@@ -285,15 +297,16 @@ export function UpkeepDashboard() {
       <section className="dashboard-shell">
         <aside className="dashboard-rail">
           <section className="panel">
-            <span className="eyebrow">Machine selector</span>
-            <h1>Pick a machine, then ask what failed.</h1>
+            <span className="eyebrow">Step 1</span>
+            <h1>Choose what you need help with.</h1>
             <p>
-              The seeded demo is preloaded around a Haas VF-2 alarm E32 path.
-              Everything runs against the local API routes.
+              Pick a machine, then follow the guided flow below. The demo is
+              preloaded with a Haas VF-2 example so you can try it immediately.
             </p>
+            <p className="section-note consumer-note">Now: {helperCopy}</p>
 
             <label className="field-label" htmlFor="machine-select">
-              Active machine
+              Machine
             </label>
             <select
               id="machine-select"
@@ -339,16 +352,16 @@ export function UpkeepDashboard() {
             </div>
 
             <button className="button button-secondary button-block" type="button" onClick={loadDemoPath}>
-              Load E32 demo
+              Load sample question
             </button>
           </section>
 
           <section className="panel">
-            <span className="eyebrow">Manual upload</span>
-            <h2>Index a PDF manual or a text export.</h2>
+            <span className="eyebrow">Step 2</span>
+            <h2>Add manual text once.</h2>
             <p>
-              The backend accepts extracted text, so the intake form lets you
-              name the file, add pages, and paste the manual content that will be indexed.
+              Paste extracted manual text so Upkeep can search it. For the demo,
+              the seeded Haas manual is already available.
             </p>
 
             <div className="stack">
@@ -375,7 +388,7 @@ export function UpkeepDashboard() {
             </div>
 
             <button className="button button-primary button-block" type="button" onClick={() => submitManual().catch((manualError) => setError(manualError instanceof Error ? manualError.message : "Unable to upload manual."))}>
-              Save manual
+              Add manual
             </button>
             {uploadStatus ? <p className="feedback success">{uploadStatus}</p> : null}
           </section>
@@ -385,11 +398,15 @@ export function UpkeepDashboard() {
           <section className="panel hero-panel">
             <div className="panel-topline">
               <div>
-                <span className="eyebrow">Grounded assistant</span>
-                <h1>Ask about the alarm, the fix, and the parts.</h1>
+                <span className="eyebrow">Step 3</span>
+                <h1>Ask your question the normal way.</h1>
               </div>
-              <div className="mode-badge">{loading ? "Thinking" : "Local demo"}</div>
+              <div className="mode-badge">{loading ? "Finding answer" : "Ready"}</div>
             </div>
+            <p className="section-note consumer-note">
+              You do not need the right technical wording. Upkeep will search
+              the manual, pull the best source, and suggest the next step.
+            </p>
 
             <label className="field-label" htmlFor="chat-question">Troubleshooting prompt</label>
             <textarea
@@ -397,18 +414,18 @@ export function UpkeepDashboard() {
               className="input textarea chat-input"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
-              placeholder="Ask about an error code, noise, missing motion, or a recurring maintenance issue."
+              placeholder="Example: My machine shows error E32. What does it mean and what should I check first?"
             />
 
             <div className="quick-actions">
               <button type="button" className="quick-chip" onClick={() => setQuestion(demoPrompt)}>
-                E32 spindle alarm
+                Sample alarm question
               </button>
               <button type="button" className="quick-chip" onClick={() => setQuestion("What should I do if the spindle encoder cable is damaged?")}>
-                Encoder cable issue
+                Damaged cable
               </button>
               <button type="button" className="quick-chip" onClick={() => setQuestion("When was the last time we fixed this issue?")}>
-                Last fix
+                Previous fix
               </button>
             </div>
 
@@ -419,7 +436,7 @@ export function UpkeepDashboard() {
                 onClick={() => runChat().catch((chatError) => setError(chatError instanceof Error ? chatError.message : "Unable to answer question."))}
                 disabled={loading || refreshing}
               >
-                {loading ? "Running..." : "Ask Upkeep"}
+                {loading ? "Getting answer..." : "Get answer"}
               </button>
               <button
                 className="button button-secondary"
@@ -435,7 +452,7 @@ export function UpkeepDashboard() {
                 }}
                 disabled={loading || refreshing}
               >
-                Run seeded demo
+                Run sample flow
               </button>
             </div>
 
@@ -444,8 +461,8 @@ export function UpkeepDashboard() {
 
           <div className="results-grid">
             <section className="panel answer-panel">
-              <span className="eyebrow">Answer</span>
-              <h2>Grounded response and confidence</h2>
+              <span className="eyebrow">Step 4</span>
+              <h2>Answer you can act on.</h2>
               {answer ? (
                 <div className="answer-block">
                   <div className="answer-score">
@@ -454,7 +471,7 @@ export function UpkeepDashboard() {
                   </div>
                   <pre className="answer-text">{answer.answer}</pre>
                   <div className="answer-meta">
-                    <span>{answer.modeUsed === "claude" ? "Claude mode" : "Demo mode"}</span>
+                    <span>{answer.modeUsed === "claude" ? "AI answer" : "Fallback answer"}</span>
                     {answer.machine ? (
                       <span>
                         {answer.machine.manufacturer} {answer.machine.model}
@@ -463,13 +480,13 @@ export function UpkeepDashboard() {
                   </div>
                 </div>
               ) : (
-                <p className="empty-state">Run the seeded E32 demo or ask a new maintenance question to generate a grounded answer.</p>
+                <p className="empty-state">Ask a question to see the answer, the source it came from, and what to do next.</p>
               )}
             </section>
 
             <section className="panel">
-              <span className="eyebrow">Sources</span>
-              <h2>Manual chunks used for the answer</h2>
+              <span className="eyebrow">Why this answer</span>
+              <h2>Source text from the manual.</h2>
               {answer?.sources.length ? (
                 <div className="stack">
                   {answer.sources.map((source) => (
@@ -483,15 +500,15 @@ export function UpkeepDashboard() {
                   ))}
                 </div>
               ) : (
-                <p className="empty-state">Sources will appear here once a question is run against the selected manual set.</p>
+                <p className="empty-state">The supporting manual passage will appear here after you ask a question.</p>
               )}
             </section>
           </div>
 
           <div className="results-grid">
             <section className="panel">
-              <span className="eyebrow">Parts</span>
-              <h2>Likely replacement parts</h2>
+              <span className="eyebrow">Next actions</span>
+              <h2>Likely parts to review.</h2>
               {answer?.partSuggestions.length ? (
                 <div className="stack">
                   {answer.partSuggestions.map((part) => (
@@ -511,13 +528,13 @@ export function UpkeepDashboard() {
                   ))}
                 </div>
               ) : (
-                <p className="empty-state">Part links will show up after the answer identifies replacement candidates.</p>
+                <p className="empty-state">If the answer mentions a likely replacement part, it will appear here with direct search links.</p>
               )}
             </section>
 
             <section className="panel">
-              <span className="eyebrow">Maintenance log</span>
-              <h2>Save the fix before the next shift</h2>
+              <span className="eyebrow">Save it</span>
+              <h2>Keep the fix for the next person.</h2>
               <div className="stack">
                 <label className="field-label" htmlFor="log-issue">Issue</label>
                 <textarea id="log-issue" className="input textarea" value={logIssue} onChange={(event) => setLogIssue(event.target.value)} />
@@ -527,18 +544,18 @@ export function UpkeepDashboard() {
                 <input id="log-parts" className="input" value={logPartNumbers} onChange={(event) => setLogPartNumbers(event.target.value)} />
               </div>
               <button className="button button-primary button-block" type="button" onClick={() => saveLog().catch((logError) => setError(logError instanceof Error ? logError.message : "Unable to save log."))}>
-                Log this fix
+                Save this fix
               </button>
               {logStatus ? <p className="feedback success">{logStatus}</p> : null}
             </section>
           </div>
 
           <section className="panel">
-            <span className="eyebrow">Recent history</span>
-            <h2>Previously logged fixes</h2>
+            <span className="eyebrow">History</span>
+            <h2>Previous answers and saved fixes.</h2>
             {selectedManuals.length ? (
               <p className="section-note">
-                Manuals attached to this machine: {selectedManuals.map((manual) => manual.title).join(", ")}
+                Manuals currently attached: {selectedManuals.map((manual) => manual.title).join(", ")}
               </p>
             ) : null}
             <div className="timeline">

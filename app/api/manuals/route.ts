@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     return badRequest("status must be one of pending, indexed, or failed.");
   }
   const limit = parseLimit(url.searchParams.get("limit"), 25, 100);
-  const manuals = listManuals({ machineId, query, status, limit });
+  const manuals = await listManuals({ machineId, query, status, limit });
 
   return ok({
     manuals,
@@ -34,13 +34,13 @@ export async function POST(request: Request) {
     return badRequest(parsed.message);
   }
 
-  const machine = findMachineById(parsed.value.machineId);
+  const machine = await findMachineById(parsed.value.machineId);
   if (!machine) {
     return notFound("Machine not found");
   }
 
   try {
-    const result = createManual(parsed.value);
+    const result = await createManual(parsed.value);
 
     return created({
       manual: result.manual,

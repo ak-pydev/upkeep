@@ -15,7 +15,14 @@ export async function GET(request: Request) {
   const manualId = url.searchParams.get("manualId")?.trim() || undefined;
   const tags = parseStringArrayValue(url.searchParams.get("tags") ?? url.searchParams.get("tag"));
   const limit = parseLimit(url.searchParams.get("limit"), 25, 100);
-  const machines = listMachines({ query, shopId, status, manualId, tags, limit });
+  const machines = await listMachines({
+    query,
+    shopId,
+    status,
+    manualId,
+    tags,
+    limit
+  });
 
   return ok({
     machines,
@@ -38,7 +45,7 @@ export async function POST(request: Request) {
     return badRequest(parsed.message);
   }
 
-  const machine = createMachine(parsed.value);
+  const machine = await createMachine(parsed.value);
 
   return created({ machine });
 }

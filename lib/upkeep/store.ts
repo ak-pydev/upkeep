@@ -18,13 +18,24 @@ import type {
 } from "@/lib/upkeep/types";
 import { rankLogs, rankMachines, rankChunks } from "@/lib/upkeep/search";
 import { uniquePartLabels } from "@/lib/upkeep/parts";
-import { isSupabaseConfigured } from "@/lib/integrations/supabase";
+import {
+  fetchLogsFromSupabase,
+  fetchMachinesFromSupabase,
+  fetchManualChunksFromSupabase,
+  fetchManualsFromSupabase,
+  insertLogInSupabase,
+  insertManualInSupabase,
+  isSupabaseConfigured,
+  upsertMachineInSupabase
+} from "@/lib/integrations/supabase";
 
 type StoreState = StoreSnapshot;
 
 declare global {
   // eslint-disable-next-line no-var
   var __upkeepStore: StoreState | undefined;
+  // eslint-disable-next-line no-var
+  var __upkeepStoreInit: Promise<StoreState> | undefined;
 }
 
 function cloneMachine(machine: Machine): Machine {
@@ -75,12 +86,91 @@ function normalizeChunkPartNumbers(partNumbers?: string[]) {
   return uniquePartLabels(partNumbers ?? []);
 }
 
-function getState(): StoreState {
-  if (!globalThis.__upkeepStore) {
-    globalThis.__upkeepStore = createSeedSnapshot();
+function computeCounters(snapshot: Omit<StoreSnapshot, "counters">) {
+  const machineMax = snapshot.machines.reduce((max, machine) => {
+    const value = Number(machine.id.split("_").at(-1));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  const manualMax = snapshot.manuals.reduce((max, manual) => {
+    const value = Number(manual.id.split("_").at(-1));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  const chunkMax = snapshot.chunks.reduce((max, chunk) => {
+    const value = Number(chunk.id.split("_").at(-1));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+  const logMax = snapshot.logs.reduce((max, log) => {
+    const value = Number(log.id.split("_").at(-1));
+    return Number.isFinite(value) ? Math.max(max, value) : max;
+  }, 0);
+
+  return {
+    machine: machineMax || snapshot.machines.length,
+    manual: manualMax || snapshot.manuals.length,
+    chunk: chunkMax || snapshot.chunks.length,
+    log: logMax || snapshot.logs.length
+  };
+}
+
+async function loadSupabaseSnapshot(): Promise<StoreState> {
+  const [machines, manuals, chunks, logs] = await Promise.all([
+    fetchMachinesFromSupabase(),
+    fetchManualsFromSupabase(),
+    fetchManualChunksFromSupabase(),
+    fetchLogsFromSupabase()
+  ]);
+
+  const snapshot = {
+    machines,
+    manuals,
+    chunks,
+    logs
+  };
+
+  return {
+    ...snapshot,
+    counters: computeCounters(snapshot)
+  };
+}
+
+async function initializeState() {
+  if (isSupabaseConfigured()) {
+    try {
+      return await loadSupabaseSnapshot();
+    } catch {
+      return createSeedSnapshot();
+    }
   }
 
-  return globalThis.__upkeepStore;
+  return createSeedSnapshot();
+}
+
+async function trySupabaseWrite(task: () => Promise<void>) {
+  if (!isSupabaseConfigured()) {
+    return false;
+  }
+
+  try {
+    await task();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getState(): Promise<StoreState> {
+  if (globalThis.__upkeepStore) {
+    return globalThis.__upkeepStore;
+  }
+
+  if (!globalThis.__upkeepStoreInit) {
+    globalThis.__upkeepStoreInit = initializeState().then((state) => {
+      globalThis.__upkeepStore = state;
+      return state;
+    });
+  }
+
+  return globalThis.__upkeepStoreInit;
 }
 
 function persistState(state: StoreState) {
@@ -88,8 +178,8 @@ function persistState(state: StoreState) {
   return state;
 }
 
-function nextCounterKey(kind: keyof StoreState["counters"]) {
-  const state = getState();
+async function nextCounterKey(kind: keyof StoreState["counters"]) {
+  const state = await getState();
   state.counters[kind] += 1;
   return state.counters[kind];
 }
@@ -97,13 +187,16 @@ function nextCounterKey(kind: keyof StoreState["counters"]) {
 type ManualChunkDraft = {
   manualId: string;
   chunkIndex: number;
-  pageNumber: number | undefined;
+  pageNumber?: number;
   content: string;
   partNumbers: string[];
   createdAt: string;
 };
 
-function normalizeInputChunks(manualId: string, chunks: ManualChunkInput[]): ManualChunk[] {
+async function normalizeInputChunks(
+  manualId: string,
+  chunks: ManualChunkInput[]
+): Promise<ManualChunk[]> {
   const normalized: ManualChunkDraft[] = chunks.flatMap((chunk, index) => {
     const content = cleanString(chunk.content);
     if (!content) {
@@ -122,42 +215,56 @@ function normalizeInputChunks(manualId: string, chunks: ManualChunkInput[]): Man
     ];
   });
 
-  return normalized.map((chunk, index) => ({
-    ...chunk,
-    id: createId("chunk", nextCounterKey("chunk")),
-    chunkIndex: index
-  }));
+  const output: ManualChunk[] = [];
+  for (const chunk of normalized) {
+    output.push({
+      ...chunk,
+      id: createId("chunk", await nextCounterKey("chunk"))
+    });
+  }
+
+  return output;
 }
 
-function createChunksFromText(manualId: string, text?: string): ManualChunk[] {
+async function createChunksFromText(
+  manualId: string,
+  text?: string
+): Promise<ManualChunk[]> {
   const cleanedText = cleanString(text);
   if (!cleanedText) {
     return [];
   }
 
-  return chunkText(cleanedText).map((content, index): ManualChunk => ({
-    id: createId("chunk", nextCounterKey("chunk")),
-    manualId,
-    chunkIndex: index,
-    content,
-    partNumbers: [],
-    createdAt: nowIso()
-  }));
+  const chunks = chunkText(cleanedText);
+  const output: ManualChunk[] = [];
+  for (const [index, content] of chunks.entries()) {
+    output.push({
+      id: createId("chunk", await nextCounterKey("chunk")),
+      manualId,
+      chunkIndex: index,
+      content,
+      partNumbers: [],
+      createdAt: nowIso()
+    });
+  }
+
+  return output;
 }
 
-export function listMachines(options?: MachineListOptions) {
-  const state = getState();
+export async function listMachines(options?: MachineListOptions) {
+  const state = await getState();
   const filtered = state.machines.filter((machine) => {
-    if (options?.shopId && machine.shopId !== options.shopId) {
-      return false;
-    }
-    if (options?.status && machine.status !== options.status) {
-      return false;
-    }
+    if (options?.shopId && machine.shopId !== options.shopId) return false;
+    if (options?.status && machine.status !== options.status) return false;
     if (options?.manualId && !machine.manualIds.includes(options.manualId)) {
       return false;
     }
-    if (options?.tags?.length && !options.tags.every((tag) => machine.tags.some((machineTag) => machineTag.toLowerCase() === tag.toLowerCase()))) {
+    if (
+      options?.tags?.length &&
+      !options.tags.every((tag) =>
+        machine.tags.some((machineTag) => machineTag.toLowerCase() === tag.toLowerCase())
+      )
+    ) {
       return false;
     }
     return true;
@@ -170,20 +277,21 @@ export function listMachines(options?: MachineListOptions) {
   return machines.map(cloneMachine);
 }
 
-export function findMachineById(machineId: string) {
-  const state = getState();
+export async function findMachineById(machineId: string) {
+  const state = await getState();
   const machine = state.machines.find((entry) => entry.id === machineId);
   return machine ? cloneMachine(machine) : null;
 }
 
-export function findMachinesByQuery(query: string, limit = 5) {
-  return rankMachines(getState().machines, query, limit).map(cloneMachine);
+export async function findMachinesByQuery(query: string, limit = 5) {
+  const state = await getState();
+  return rankMachines(state.machines, query, limit).map(cloneMachine);
 }
 
-export function createMachine(input: MachineInput) {
-  const state = getState();
+export async function createMachine(input: MachineInput) {
+  const state = await getState();
   const machine: Machine = {
-    id: createId("machine", nextCounterKey("machine")),
+    id: createId("machine", await nextCounterKey("machine")),
     shopId: input.shopId.trim(),
     manufacturer: input.manufacturer.trim(),
     model: input.model.trim(),
@@ -197,13 +305,15 @@ export function createMachine(input: MachineInput) {
     updatedAt: nowIso()
   };
 
+  await trySupabaseWrite(() => upsertMachineInSupabase(machine));
+
   state.machines.unshift(machine);
   persistState(state);
   return cloneMachine(machine);
 }
 
-export function updateMachine(machineId: string, patch: MachinePatch) {
-  const state = getState();
+export async function updateMachine(machineId: string, patch: MachinePatch) {
+  const state = await getState();
   const machine = state.machines.find((entry) => entry.id === machineId);
   if (!machine) {
     return null;
@@ -219,25 +329,23 @@ export function updateMachine(machineId: string, patch: MachinePatch) {
   if (patch.notes !== undefined) machine.notes = cleanString(patch.notes);
   machine.updatedAt = nowIso();
 
+  await trySupabaseWrite(() => upsertMachineInSupabase(machine));
+
   persistState(state);
   return cloneMachine(machine);
 }
 
-export function listManuals(options?: ManualListOptions) {
-  const state = getState();
+export async function listManuals(options?: ManualListOptions) {
+  const state = await getState();
   const manualIds = options?.manualIds?.length ? new Set(options.manualIds) : null;
   const manuals = state.manuals.filter((manual) => {
-    if (options?.machineId && manual.machineId !== options.machineId) {
-      return false;
-    }
-    if (options?.status && manual.status !== options.status) {
-      return false;
-    }
-    if (manualIds && !manualIds.has(manual.id)) {
-      return false;
-    }
+    if (options?.machineId && manual.machineId !== options.machineId) return false;
+    if (options?.status && manual.status !== options.status) return false;
+    if (manualIds && !manualIds.has(manual.id)) return false;
     if (options?.query) {
-      const haystack = [manual.title, manual.filename, manual.notes ?? ""].join(" ").toLowerCase();
+      const haystack = [manual.title, manual.filename, manual.notes ?? ""]
+        .join(" ")
+        .toLowerCase();
       const tokens = options.query.toLowerCase().split(/\s+/).filter(Boolean);
       if (!tokens.every((token) => haystack.includes(token))) {
         return false;
@@ -249,45 +357,43 @@ export function listManuals(options?: ManualListOptions) {
   return manuals.slice(0, options?.limit ?? manuals.length).map(cloneManual);
 }
 
-export function findManualById(manualId: string) {
-  const state = getState();
+export async function findManualById(manualId: string) {
+  const state = await getState();
   const manual = state.manuals.find((entry) => entry.id === manualId);
   return manual ? cloneManual(manual) : null;
 }
 
-export function listManualChunks(options?: { machineId?: string; manualIds?: string[] }) {
-  const state = getState();
+export async function listManualChunks(options?: {
+  machineId?: string;
+  manualIds?: string[];
+}) {
+  const state = await getState();
   const manualIds = options?.manualIds?.length ? new Set(options.manualIds) : null;
   const manualLookup = new Map(state.manuals.map((manual) => [manual.id, manual]));
 
   return state.chunks
     .filter((chunk) => {
       const manual = manualLookup.get(chunk.manualId);
-      if (!manual) {
-        return false;
-      }
-      if (options?.machineId && manual.machineId !== options.machineId) {
-        return false;
-      }
-      if (manualIds && !manualIds.has(chunk.manualId)) {
-        return false;
-      }
+      if (!manual) return false;
+      if (options?.machineId && manual.machineId !== options.machineId) return false;
+      if (manualIds && !manualIds.has(chunk.manualId)) return false;
       return true;
     })
     .map(cloneChunk);
 }
 
-export function createManual(input: ManualCreateInput) {
-  const state = getState();
+export async function createManual(input: ManualCreateInput) {
+  const state = await getState();
   const machine = requireMachine(state, input.machineId);
   if (!machine) {
     throw new Error("Machine not found");
   }
 
-  const manualId = createId("manual", nextCounterKey("manual"));
+  const manualId = createId("manual", await nextCounterKey("manual"));
   const manualChunks = input.chunks?.length
-    ? normalizeInputChunks(manualId, input.chunks)
-    : createChunksFromText(manualId, input.sourceText);
+    ? await normalizeInputChunks(manualId, input.chunks)
+    : await createChunksFromText(manualId, input.sourceText);
+  const indexedAt = manualChunks.length > 0 ? nowIso() : undefined;
   const manual: Manual = {
     id: manualId,
     machineId: input.machineId,
@@ -298,23 +404,23 @@ export function createManual(input: ManualCreateInput) {
     status: manualChunks.length > 0 ? "indexed" : "pending",
     chunkCount: manualChunks.length,
     createdAt: nowIso(),
-    indexedAt: manualChunks.length > 0 ? nowIso() : undefined,
+    indexedAt,
     notes: cleanString(input.notes)
   };
 
+  machine.manualIds = machine.manualIds.includes(manual.id)
+    ? machine.manualIds
+    : [manual.id, ...machine.manualIds];
+  machine.updatedAt = nowIso();
+
+  await trySupabaseWrite(async () => {
+    await insertManualInSupabase(manual, manualChunks);
+    await upsertMachineInSupabase(machine);
+  });
+
   state.manuals.unshift(manual);
   state.chunks.unshift(...manualChunks);
-
-  if (!machine.manualIds.includes(manual.id)) {
-    machine.manualIds.unshift(manual.id);
-    machine.updatedAt = nowIso();
-  }
-
   persistState(state);
-
-  if (isSupabaseConfigured()) {
-    // Demo-first default. Wire the Supabase write path here when the service is enabled.
-  }
 
   return {
     manual: cloneManual(manual),
@@ -322,8 +428,8 @@ export function createManual(input: ManualCreateInput) {
   };
 }
 
-export function createLog(input: LogCreateInput) {
-  const state = getState();
+export async function createLog(input: LogCreateInput) {
+  const state = await getState();
   const machine = requireMachine(state, input.machineId);
   if (!machine) {
     throw new Error("Machine not found");
@@ -332,14 +438,16 @@ export function createLog(input: LogCreateInput) {
   const sourceManualIds = uniquePartLabels(input.sourceManualIds ?? []);
   if (sourceManualIds.length > 0) {
     const allowedManualIds = new Set(machine.manualIds);
-    const invalidManualIds = sourceManualIds.filter((manualId) => !allowedManualIds.has(manualId));
+    const invalidManualIds = sourceManualIds.filter(
+      (manualId) => !allowedManualIds.has(manualId)
+    );
     if (invalidManualIds.length > 0) {
       throw new Error("sourceManualIds must belong to the selected machine");
     }
   }
 
   const log: MaintenanceLog = {
-    id: createId("log", nextCounterKey("log")),
+    id: createId("log", await nextCounterKey("log")),
     machineId: input.machineId,
     issue: input.issue.trim(),
     resolution: input.resolution.trim(),
@@ -349,23 +457,21 @@ export function createLog(input: LogCreateInput) {
     createdAt: nowIso()
   };
 
+  await trySupabaseWrite(() => insertLogInSupabase(log));
+
   state.logs.unshift(log);
   persistState(state);
-
-  if (isSupabaseConfigured()) {
-    // Demo-first default. Wire the Supabase write path here when the service is enabled.
-  }
-
   return cloneLog(log);
 }
 
-export function listLogs(options?: LogListOptions) {
-  const state = getState();
+export async function listLogs(options?: LogListOptions) {
+  const state = await getState();
   const filtered = state.logs.filter((log) => {
-    if (options?.machineId && log.machineId !== options.machineId) {
-      return false;
-    }
-    if (options?.sourceManualId && !log.sourceManualIds.includes(options.sourceManualId)) {
+    if (options?.machineId && log.machineId !== options.machineId) return false;
+    if (
+      options?.sourceManualId &&
+      !log.sourceManualIds.includes(options.sourceManualId)
+    ) {
       return false;
     }
     if (options?.query) {
@@ -375,34 +481,42 @@ export function listLogs(options?: LogListOptions) {
     return true;
   });
 
-  const logs = options?.query ? rankLogs(options.query, filtered, options.limit ?? filtered.length) : filtered.slice(0, options?.limit ?? filtered.length);
+  const logs = options?.query
+    ? rankLogs(options.query, filtered, options.limit ?? filtered.length)
+    : filtered.slice(0, options?.limit ?? filtered.length);
 
   return logs.map(cloneLog);
 }
 
-export function findLogById(logId: string) {
-  const state = getState();
+export async function findLogById(logId: string) {
+  const state = await getState();
   const log = state.logs.find((entry) => entry.id === logId);
   return log ? cloneLog(log) : null;
 }
 
-export function searchChunksForQuestion(question: string, options?: { machineId?: string; manualIds?: string[]; limit?: number }) {
-  const manuals = listManuals(options);
-  const chunks = listManualChunks(options);
+export async function searchChunksForQuestion(
+  question: string,
+  options?: { machineId?: string; manualIds?: string[]; limit?: number }
+) {
+  const manuals = await listManuals(options);
+  const chunks = await listManualChunks(options);
   if (manuals.length === 0 || chunks.length === 0) {
     return [];
   }
-  const ranked: RankedChunk[] = chunks.map((chunk) => ({
-    chunk,
-    manual: manuals.find((manual) => manual.id === chunk.manualId) ?? manuals[0],
-    score: 0
-  })).filter((entry): entry is RankedChunk => Boolean(entry.manual));
+
+  const ranked: RankedChunk[] = chunks
+    .map((chunk) => ({
+      chunk,
+      manual: manuals.find((manual) => manual.id === chunk.manualId) ?? manuals[0],
+      score: 0
+    }))
+    .filter((entry): entry is RankedChunk => Boolean(entry.manual));
 
   return rankChunks(question, ranked, options?.limit ?? 5);
 }
 
-export function getSeedCounts() {
-  const state = getState();
+export async function getSeedCounts() {
+  const state = await getState();
   return {
     machines: state.machines.length,
     manuals: state.manuals.length,
@@ -411,8 +525,8 @@ export function getSeedCounts() {
   };
 }
 
-export function getStoreSnapshot() {
-  const state = getState();
+export async function getStoreSnapshot() {
+  const state = await getState();
   return {
     machines: state.machines.map(cloneMachine),
     manuals: state.manuals.map(cloneManual),

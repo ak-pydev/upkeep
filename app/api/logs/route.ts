@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   const sourceManualId = url.searchParams.get("sourceManualId")?.trim() || undefined;
   const limit = parseLimit(url.searchParams.get("limit"), 25, 100);
 
-  const logs = listLogs({
+  const logs = await listLogs({
     query,
     machineId,
     sourceManualId,
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const log = createLog(parsed.value);
+    const log = await createLog(parsed.value);
 
     return created({ log });
   } catch (error) {

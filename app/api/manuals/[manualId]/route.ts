@@ -8,14 +8,14 @@ export async function GET(
   context: { params: Promise<{ manualId: string }> }
 ) {
   const { manualId } = await context.params;
-  const manual = findManualById(manualId);
+  const manual = await findManualById(manualId);
 
   if (!manual) {
     return notFound("Manual not found");
   }
 
-  const chunks = listManualChunks({ manualIds: [manualId] });
-  const machine = findMachineById(manual.machineId);
+  const chunks = await listManualChunks({ manualIds: [manualId] });
+  const machine = await findMachineById(manual.machineId);
 
   return ok({
     manual,

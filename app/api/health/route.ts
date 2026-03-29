@@ -5,14 +5,16 @@ import { ok } from "@/lib/upkeep/http";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const supabase = await getSupabaseBoundarySummary();
+
   return ok({
     ok: true,
     service: "upkeep-api",
     mode: "demo-first",
     timestamp: new Date().toISOString(),
-    counts: getSeedCounts(),
+    counts: await getSeedCounts(),
     boundaries: {
-      supabase: getSupabaseBoundarySummary(),
+      supabase,
       claude: {
         configured: Boolean(process.env.ANTHROPIC_API_KEY),
         mode: process.env.UPKEEP_AI_MODE ?? "demo"
@@ -20,4 +22,3 @@ export async function GET() {
     }
   });
 }
-

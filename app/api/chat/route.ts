@@ -13,7 +13,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (parsed.value.machineId && !findMachineById(parsed.value.machineId)) {
+    if (
+      parsed.value.machineId &&
+      !(await findMachineById(parsed.value.machineId))
+    ) {
       return notFound("Machine not found");
     }
 

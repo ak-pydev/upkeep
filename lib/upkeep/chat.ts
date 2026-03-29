@@ -121,17 +121,17 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
     throw new Error("question is required");
   }
 
-  const allMachines = listMachines();
-  const machineById = body.machineId ? findMachineById(body.machineId) : null;
-  const inferredMachines = body.machineId ? [] : findMachinesByQuery(question);
+  const allMachines = await listMachines();
+  const machineById = body.machineId ? await findMachineById(body.machineId) : null;
+  const inferredMachines = body.machineId ? [] : await findMachinesByQuery(question);
   const machine = machineById ?? inferredMachines[0] ?? (allMachines.length === 1 ? allMachines[0] : null);
 
-  const manuals = listManuals({
+  const manuals = await listManuals({
     machineId: machine?.id,
     manualIds: body.manualIds
   });
 
-  const manualChunks = listManualChunks({
+  const manualChunks = await listManualChunks({
     machineId: machine?.id,
     manualIds: body.manualIds
   });
@@ -142,14 +142,20 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
     manualChunks
       .map((chunk) => ({
         chunk,
-        manual: manuals.find((manual) => manual.id === chunk.manualId) ?? findManualById(chunk.manualId),
+        manual:
+          manuals.find((manual) => manual.id === chunk.manualId) ??
+          manuals[0],
         score: 0
       }))
       .filter((entry): entry is RankedChunk => Boolean(entry.manual)),
     body.limit ?? 5
   );
 
-  const relatedLogs = rankLogs(question, listLogs({ machineId: machine?.id }), body.limit ?? 5);
+  const relatedLogs = rankLogs(
+    question,
+    await listLogs({ machineId: machine?.id }),
+    body.limit ?? 5
+  );
   const manual = selectPrimaryManual(rankedChunks) ?? manuals[0] ?? null;
   const partLabels = buildPartLabels(rankedChunks);
 
@@ -158,7 +164,17 @@ export async function answerQuestion(body: ChatRequestBody): Promise<ChatResult>
   );
 
   const modeRequested = process.env.UPKEEP_AI_MODE === "claude";
-  const maybeClaude = modeRequested ? await generateClaudeAnswer({ system: "Use the supplied context.", user: buildClaudePrompt(question, machine, manual, rankedChunks, relatedLogs) }) : null;
+  let maybeClaude: string | null = null;
+  if (modeRequested) {
+    try {
+      maybeClaude = await generateClaudeAnswer({
+        system: "Use the supplied context.",
+        user: buildClaudePrompt(question, machine, manual, rankedChunks, relatedLogs)
+      });
+    } catch {
+      maybeClaude = null;
+    }
+  }
   const answer = maybeClaude ?? buildDemoAnswer(question, machine, manual, rankedChunks, relatedLogs);
 
   const sources = rankedChunks.map((entry) => ({
