@@ -137,13 +137,15 @@ import { AuthService } from '../../core/auth/auth.service';
               <mat-icon>menu</mat-icon>
             </button>
           }
-          <div class="toolbar-brand">
-            <span class="logo">U</span>
-            <div class="toolbar-copy">
-              <span class="name">Upkeep</span>
-              <span class="tag">Operations workspace</span>
+          @if (isHandset()) {
+            <div class="toolbar-brand">
+              <span class="logo">U</span>
+              <div class="toolbar-copy">
+                <span class="name">Upkeep</span>
+                <span class="tag">Operations workspace</span>
+              </div>
             </div>
-          </div>
+          }
           @if (!isHandset()) {
             <div class="toolbar-badges">
               <span class="surface-pill">Dashboard</span>
@@ -299,6 +301,7 @@ import { AuthService } from '../../core/auth/auth.service';
         display: flex;
         align-items: center;
         gap: 12px;
+        min-width: 0;
       }
 
       .toolbar-badges {
@@ -344,6 +347,26 @@ import { AuthService } from '../../core/auth/auth.service';
 
         .drawer-shell {
           padding: 20px 16px 18px;
+        }
+      }
+
+      @media (max-width: 899px) {
+        .toolbar {
+          gap: 10px;
+          min-height: 68px;
+          padding-inline: 12px;
+        }
+
+        .toolbar-brand {
+          flex: 1;
+        }
+
+        .toolbar-copy .name {
+          font-size: 15px;
+        }
+
+        .toolbar-copy .tag {
+          font-size: 11px;
         }
       }
     `,

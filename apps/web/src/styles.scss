@@ -81,7 +81,6 @@ code {
   border-radius: var(--upkeep-radius);
   padding: 1rem;
   box-shadow: var(--upkeep-shadow-soft);
-  backdrop-filter: blur(18px);
 }
 
 .upkeep-card--warm {
@@ -153,7 +152,6 @@ code {
   border-radius: var(--upkeep-radius);
   background: var(--upkeep-surface);
   box-shadow: var(--upkeep-shadow-soft);
-  backdrop-filter: blur(14px);
 }
 
 .upkeep-panel__body {
@@ -225,6 +223,11 @@ code {
   .upkeep-panel__body,
   .upkeep-card {
     padding: 1.25rem;
+  }
+
+  .upkeep-card,
+  .upkeep-panel {
+    backdrop-filter: blur(10px);
   }
 }
 
