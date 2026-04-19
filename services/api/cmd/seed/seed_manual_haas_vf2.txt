@@ -1,0 +1,78 @@
+HAAS VF-2 OPERATOR'S MANUAL — EXCERPT FOR UPKEEP DEMO SEED
+=========================================================
+
+Section 1: Power-On and Homing
+The Haas VF-2 vertical machining center performs a startup self-check on power-on.
+During this check, the control verifies spindle orientation, axis referencing, and
+servo drive readiness. If any subsystem reports an abnormal condition, the control
+displays a numeric error code on the pendant and halts the start-up sequence until
+the fault is acknowledged.
+
+Section 2: Common Error Codes
+Error E22 — Axis following error. The servo motor was commanded to a position it
+could not reach within the allowed tracking window. Check for mechanical binding,
+chip buildup in the way covers, or a damaged ballscrew. Cycle power after clearing
+the obstruction; if the error recurs, measure servo drive current under load.
+
+Error E32 — Spindle orientation fault. The spindle motor could not complete a
+homing rotation during power-on self-check. The most common root cause is a
+dislodged or corroded spindle encoder cable connection (McMaster part number
+30-3480 for the replacement connector kit). The secondary cause is a blown F3
+fuse on the spindle drive board. Always lockout-tagout before servicing the
+spindle drive.
+
+Resolution for E32:
+1. Power down the machine and apply lockout.
+2. Open the back electrical cabinet and locate the spindle drive board.
+3. Unplug and reseat the spindle encoder cable (typically a 15-pin D-sub).
+4. Inspect the pins for green corrosion — if present, replace the connector kit
+   (Grainger part 4ZM32, McMaster 30-3480).
+5. Verify F3 fuse continuity; replace with 3.15A fast-blow if blown.
+6. Re-power the machine and run the homing procedure from the pendant menu.
+7. If E32 persists after three attempts, call the Haas service line.
+
+Error E41 — Coolant level low. The float sensor in the coolant tank is reporting
+empty. Top off with water-soluble coolant to the indicated fill line, wipe the
+sensor electrode clean, and reset the alarm from the maintenance menu.
+
+Error E73 — Tool changer timeout. The tool carousel failed to rotate to the
+commanded pocket within the allotted time. Inspect the carousel for interference,
+verify the shot pin retracts fully, and check the air pressure regulator — the
+VF-2 requires a minimum of 85 PSI at the tool changer manifold.
+
+Section 3: Scheduled Maintenance
+Every 500 hours: lubricate the X, Y, and Z ballscrews and way surfaces. Use
+Mobil Vactra No. 2 way oil or equivalent. Inspect the way wipers for tearing
+and replace if damaged (McMaster 9563K81).
+
+Every 1000 hours: change the hydraulic counterbalance fluid. Verify the
+counterbalance pressure gauge reads between 280–320 PSI at rest. Replace the
+spindle air filter element (Haas part 93-1005, cross-reference McMaster 32905K67).
+
+Every 2500 hours: inspect the spindle bearings for play, replace the coolant
+pump seal kit (Grainger 1ZMG7), and calibrate the tool setter probe.
+
+Section 4: Safety Notes
+Never bypass an interlock. The door interlock is a safety-critical component and
+removing it voids the machine's CE compliance. If a door interlock microswitch is
+faulty, replace it immediately with the matching Haas part (93-3200).
+
+Section 5: Spindle Warm-Up
+Before high-RPM operation, run the spindle warm-up cycle from the pendant.
+This program ramps the spindle from 500 to max RPM over ten minutes, ensuring
+the bearings reach operating temperature uniformly. Skipping this cycle is the
+number-one cause of premature spindle failure in high-duty-cycle shops.
+
+Section 6: Probe Calibration
+The VF-2's tool setter probe is a Renishaw OTS with an optical signal. If you
+see probe signal errors (ALM 4012), verify the receiver window is clean, the
+battery in the probe is above 2.8V (replace with SAFT LS14250 lithium 1/2AA),
+and the alignment is within 0.5mm of the spindle center.
+
+Section 7: Controller Updates
+Software updates for the Haas NGC control must be applied by a qualified
+technician. A failed update can corrupt the parameter file and require a full
+machine recovery. Back up parameters before every update using the USB port on
+the front of the pendant.
+
+End of excerpt.

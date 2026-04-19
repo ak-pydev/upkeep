@@ -1,0 +1,45 @@
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/upkeep/api:${BUILD_ID}"
+      - "-t"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/upkeep/api:latest"
+      - "-f"
+      - "services/api/Dockerfile"
+      - "services/api"
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, "--all-tags", "${_REGION}-docker.pkg.dev/${PROJECT_ID}/upkeep/api"]
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - upkeep-api
+      - "--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/upkeep/api:${BUILD_ID}"
+      - "--region=${_REGION}"
+      - "--platform=managed"
+      - "--service-account=upkeep-api@${PROJECT_ID}.iam.gserviceaccount.com"
+      - "--allow-unauthenticated"
+      - "--set-env-vars=^|^UPKEEP_ENV=${_ENV}|GOOGLE_CLOUD_PROJECT=${PROJECT_ID}|FIREBASE_PROJECT_ID=${PROJECT_ID}|VECTOR_BACKEND=firestore|DOC_AI_LOCATION=us|VERTEX_INDEX_ENDPOINT_ID=projects/908428850871/locations/us-central1/indexEndpoints/2668921539914629120|VERTEX_DEPLOYED_INDEX_ID=upkeep_deployed_1776563730|VERTEX_REGION=us-central1|OXYLABS_GRAINGER_DOMAIN=com|PARTS_REAL_API=true|ALLOWED_ORIGINS=https://upkeep-dev-493800.web.app,https://upkeep-dev-493800.firebaseapp.com"
+      - "--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest,MCMASTER_API_KEY=MCMASTER_API_KEY:latest,GRAINGER_API_KEY=GRAINGER_API_KEY:latest,INTERNAL_TOKEN=INTERNAL_TOKEN:latest,OXYLABS_USERNAME=OXYLABS_USERNAME:latest,OXYLABS_PASSWORD=OXYLABS_PASSWORD:latest"
+      - "--min-instances=0"
+      - "--max-instances=20"
+      - "--cpu=1"
+      - "--memory=1Gi"
+      - "--concurrency=80"
+      - "--timeout=300"
+
+substitutions:
+  _REGION: us-central1
+  _ENV: prod
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

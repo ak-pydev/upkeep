@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers ----
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function inOrg(orgId) {
+      return isSignedIn()
+        && request.auth.token.orgId == orgId;
+    }
+
+    function roleIn(orgId, allowed) {
+      return inOrg(orgId)
+        && request.auth.token.role in allowed;
+    }
+
+    function isOwner(orgId)      { return roleIn(orgId, ['owner']); }
+    function isSupervisor(orgId) { return roleIn(orgId, ['owner', 'supervisor']); }
+    function isTech(orgId)       { return roleIn(orgId, ['owner', 'supervisor', 'technician']); }
+
+    // ---- users (top-level, self-owned) ----
+    match /users/{userId} {
+      allow read:   if isSignedIn() && request.auth.uid == userId;
+      allow write:  if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ---- orgs ----
+    match /orgs/{orgId} {
+      allow read:   if inOrg(orgId);
+      allow create: if isSignedIn();         // creating your own org
+      allow update: if isOwner(orgId);
+      allow delete: if isOwner(orgId);
+
+      // machines
+      match /machines/{machineId} {
+        allow read:   if inOrg(orgId);
+        allow create, update: if isSupervisor(orgId);
+        allow delete: if isOwner(orgId);
+      }
+
+      // manuals (metadata only — chunks live separately)
+      match /manuals/{manualId} {
+        allow read:   if inOrg(orgId);
+        allow create, update: if isSupervisor(orgId);
+        allow delete: if isOwner(orgId);
+      }
+
+      // manual chunks (vector embeddings)
+      match /manual_chunks/{chunkId} {
+        allow read:   if inOrg(orgId);
+        // writes only from server (service account bypasses rules)
+        allow write:  if false;
+      }
+
+      // chat threads
+      match /threads/{threadId} {
+        allow read:   if inOrg(orgId);
+        allow create, update, delete: if isTech(orgId);
+
+        match /messages/{msgId} {
+          allow read: if inOrg(orgId);
+          allow create, update, delete: if isTech(orgId);
+        }
+      }
+
+      // tickets
+      match /tickets/{ticketId} {
+        allow read:   if inOrg(orgId);
+        allow create: if isTech(orgId);
+        allow update: if isTech(orgId);
+        allow delete: if isSupervisor(orgId);
+      }
+
+      // maintenance_log
+      match /maintenance_log/{entryId} {
+        allow read:   if inOrg(orgId);
+        allow create: if isTech(orgId);
+        allow update, delete: if isSupervisor(orgId);
+      }
+
+      // alerts (predictive maintenance)
+      match /alerts/{alertId} {
+        allow read:   if inOrg(orgId);
+        // server-only writes
+        allow write:  if false;
+      }
+
+      // members
+      match /members/{memberUid} {
+        allow read:   if inOrg(orgId);
+        allow create: if isOwner(orgId) || (isSignedIn() && request.auth.uid == memberUid);
+        allow update: if isOwner(orgId);
+        allow delete: if isOwner(orgId);
+      }
+
+      // audit logs — read-only to the org, writes are server-only
+      match /audit_logs/{logId} {
+        allow read:   if isSupervisor(orgId);
+        allow write:  if false;
+      }
+    }
+  }
+}

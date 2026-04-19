@@ -1,38 +1,28 @@
-# Upkeep backend slice
+# Upkeep
 
-This repository currently contains the API and data layer for the Upkeep MVP described in `roadmap.md`.
+Upkeep is an AI-powered troubleshooting, parts lookup, and maintenance logging platform designed for machine shops and local manufacturing businesses.
 
-## What is included
+## Use Case
 
-- Machine selector data and CRUD endpoints.
-- Manual upload and indexing endpoints that accept extracted text or chunked content.
-- Grounded chat that retrieves from seeded manual chunks first.
-- Maintenance log creation and lookup.
-- Supabase schema artifacts for the future pgvector-backed implementation.
+Machine shops often face significant downtime when equipment breaks or requires maintenance. Technicians spend valuable time searching through massive catalogs for replacement parts, diagnosing recurring issues without historical context, and manually logging maintenance actions. 
 
-## Local runtime
+Upkeep streamlines this process by providing a unified interface where technicians can:
+* Diagnose issues using an AI-powered assistant that understands the context of their specific machinery.
+* Look up replacement parts instantly through integrated semantic search and catalogs.
+* Log maintenance activities with automated, structured reporting.
 
-- `npm install`
-- `npm run dev`
+## Business Impact
 
-## Environment flags
+For local manufacturing businesses, equipment downtime directly translates to lost revenue. Upkeep provides several key benefits:
 
-- `UPKEEP_AI_MODE=claude` enables the Claude boundary if `ANTHROPIC_API_KEY` is present.
-- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` mark the Supabase boundary as configured.
+* **Reduced Mean Time to Repair (MTTR)**: By centralizing knowledge and parts lookup, technicians can diagnose and fix issues much faster.
+* **Knowledge Retention**: As senior technicians retire or leave, their troubleshooting knowledge is often lost. Upkeep acts as a central repository, allowing newer staff to benefit from historical maintenance logs.
+* **Operational Efficiency**: Automated logging and AI assistance reduce the administrative burden on technicians, allowing them to focus on actual repair work instead of manual data entry.
 
-## API surface
+## Tech Stack
 
-- `GET /api/health`
-- `GET|POST /api/machines`
-- `GET|PATCH /api/machines/[machineId]`
-- `GET|POST /api/manuals`
-- `GET /api/manuals/[manualId]`
-- `POST /api/chat`
-- `GET|POST /api/logs`
-
-## Payload notes
-
-- `POST /api/manuals` accepts extracted manual text through `sourceText`, or structured chunk data through `chunks`.
-- `POST /api/chat` expects `{ question, machineId?, manualIds?, limit? }` and returns grounded sources, part links, and a log draft.
-- `POST /api/logs` accepts the one-click fix log payload from chat, including `issue`, `resolution`, `partNumbers`, and `sourceManualIds`.
-- `GET /api/machines?query=` uses the local ranked search path for machine tagging and selector filtering.
+* **Cloud Infrastructure**: Google Cloud Platform, Firebase
+* **Database & Storage**: Cloud Firestore (Vector Backend)
+* **AI & Machine Learning**: Google Gemini API, Document AI, Vertex AI Vector Search
+* **Authentication**: Firebase Authentication
+* **Hosting**: Firebase Hosting / Cloud Run

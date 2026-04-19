@@ -1,0 +1,3 @@
+./client.go
+./live.go
+./stub.go
